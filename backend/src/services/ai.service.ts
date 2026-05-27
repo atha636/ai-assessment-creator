@@ -34,14 +34,17 @@ export const generatePaper = async (data: any) => {
   const prompt = `
 You are an expert exam paper creator for Indian schools (CBSE curriculum).
 
-Generate a structured question paper strictly following this format.
+Generate a structured question paper WITH ANSWER KEY strictly following this format.
 
 STRICT RULES:
 1. Return ONLY raw JSON — no markdown, no backticks, no explanation.
 2. Each section must contain EXACTLY the number of questions specified.
 3. Difficulty must be exactly one of: "Easy", "Medium", "Hard".
 4. Every question must be academic, specific, and meaningful.
-5. Use the uploaded content as the subject matter when provided.
+5. Every question MUST include a detailed "answer" field with the model answer.
+6. For MCQ questions, include "options" array with 4 choices (A, B, C, D) and mark the correct one in "answer".
+7. Answers should be complete and mark-worthy, matching the marks allocated.
+8. Use the uploaded content as the subject matter when provided.
 
 Required JSON structure:
 {
@@ -54,12 +57,16 @@ Required JSON structure:
           "text": "full question text here",
           "difficulty": "Easy",
           "marks": 2,
-          "type": "Short Questions"
+          "type": "Short Questions",
+          "options": ["A. option1", "B. option2", "C. option3", "D. option4"],
+          "answer": "The complete model answer here. For MCQ: state the correct option and brief explanation. For short/long: write a proper answer worth the marks given."
         }
       ]
     }
   ]
 }
+
+Note: "options" field is only required for Multiple Choice Questions. For all other types, omit it.
 
 Sections to generate:
 ${sectionsPrompt}
@@ -79,7 +86,7 @@ Total marks: ${questionTypesArr.reduce((s, q) => s + q.numQuestions * q.marks, 0
       model: "llama-3.3-70b-versatile",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.6,
-      max_tokens: 4096,
+      max_tokens: 6000,
     });
 
     const raw = response.choices[0]?.message?.content ?? "";
@@ -98,7 +105,7 @@ Total marks: ${questionTypesArr.reduce((s, q) => s + q.numQuestions * q.marks, 0
     return JSON.parse(jsonStr);
   } catch (err) {
     console.error("AI SERVICE ERROR:", err);
-    // Fallback structure
+    // Fallback structure with placeholder answers
     return {
       sections: sections.map((s) => ({
         title: s.sectionLabel,
@@ -108,6 +115,7 @@ Total marks: ${questionTypesArr.reduce((s, q) => s + q.numQuestions * q.marks, 0
           difficulty: i % 3 === 0 ? "Easy" : i % 3 === 1 ? "Medium" : "Hard",
           marks: s.marksEach,
           type: s.type,
+          answer: "Answer not available — please regenerate.",
         })),
       })),
     };
