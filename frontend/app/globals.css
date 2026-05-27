@@ -1,0 +1,102 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Serif+Display:ital@0;1&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* VedaAI Brand */
+  --brand-primary: #E8540A;
+  --brand-primary-hover: #d44a00;
+  --brand-gold: #F5B800;
+
+  /* Backgrounds */
+  --bg-app: #F4F4F4;
+  --bg-sidebar: #FFFFFF;
+  --bg-card: #FFFFFF;
+  --bg-card-hover: #FAFAFA;
+  --bg-input: #F8F8F8;
+  --bg-tag: #FFF3EE;
+
+  /* Borders */
+  --border-default: #E8E8E8;
+  --border-focus: #E8540A;
+  --border-card: #EFEFEF;
+
+  /* Text */
+  --text-primary: #1A1A1A;
+  --text-secondary: #6B6B6B;
+  --text-muted: #A0A0A0;
+  --text-brand: #E8540A;
+
+  /* Status */
+  --status-active: #22C55E;
+  --badge-easy: #DCFCE7;
+  --badge-easy-text: #15803D;
+  --badge-medium: #FEF9C3;
+  --badge-medium-text: #854D0E;
+  --badge-hard: #FEE2E2;
+  --badge-hard-text: #991B1B;
+
+  /* Sidebar */
+  --sidebar-width: 240px;
+  --topbar-height: 64px;
+
+  /* Typography */
+  --font-display: 'DM Serif Display', serif;
+  --font-body: 'DM Sans', sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  font-family: var(--font-body);
+  background-color: var(--bg-app);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 4px; }
+
+/* Animations */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+@keyframes progress-fill {
+  from { width: 0%; }
+  to   { width: var(--progress-to); }
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.4s ease forwards;
+}
+.animate-fade-in {
+  animation: fadeIn 0.3s ease forwards;
+}
+
+/* Stagger delays */
+.delay-1 { animation-delay: 0.05s; }
+.delay-2 { animation-delay: 0.10s; }
+.delay-3 { animation-delay: 0.15s; }
+.delay-4 { animation-delay: 0.20s; }
+.delay-5 { animation-delay: 0.25s; }
