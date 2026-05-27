@@ -7,7 +7,6 @@ export const createAssignment = async (req: Request, res: Response) => {
   try {
     console.log("BODY:", req.body);
 
-    // Parse questionTypes - comes as JSON string from FormData
     let questionTypes = [];
     try {
       const raw = req.body.questionTypes;
@@ -20,7 +19,6 @@ export const createAssignment = async (req: Request, res: Response) => {
       questionTypes = [];
     }
 
-    // Parse file safely - never crash if no file
     let sourceContent = "";
     if ((req as any).file) {
       try {
@@ -41,9 +39,7 @@ export const createAssignment = async (req: Request, res: Response) => {
     });
 
     console.log("✅ Assignment created:", assignment._id);
-
     await generationQueue.add("generate", { id: assignment._id });
-
     console.log("✅ Job queued for:", assignment._id);
 
     res.status(201).json({ success: true, assignment });
@@ -79,6 +75,33 @@ export const deleteAssignment = async (req: Request, res: Response) => {
     await Assignment.findByIdAndDelete(req.params.id);
     res.json({ success: true });
   } catch (err) {
+    res.status(500).json({ success: false, error: String(err) });
+  }
+};
+
+/**
+ * POST /api/assignments/:id/regenerate
+ * Clears the existing result and re-queues the same assignment for AI generation.
+ */
+export const regenerateAssignment = async (req: Request, res: Response) => {
+  try {
+    const assignment = await Assignment.findById(req.params.id);
+    if (!assignment) {
+      return res.status(404).json({ success: false, message: "Not found" });
+    }
+
+    // Reset to pending and wipe old result
+    await Assignment.findByIdAndUpdate(req.params.id, {
+      status: "pending",
+      result: null,
+    });
+
+    await generationQueue.add("generate", { id: assignment._id });
+
+    console.log("✅ Regeneration queued for:", assignment._id);
+    res.json({ success: true, message: "Regeneration started" });
+  } catch (err) {
+    console.error("❌ REGENERATE ERROR:", err);
     res.status(500).json({ success: false, error: String(err) });
   }
 };

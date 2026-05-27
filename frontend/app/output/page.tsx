@@ -1,3 +1,5 @@
+"use client";
+
 import OutputPaper from "@/components/OutputPaper";
 
 export default function OutputPage() {
