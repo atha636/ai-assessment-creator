@@ -23,15 +23,15 @@ app.use(
 
 cors({
 
-origin:[
+origin: [
 
 "http://localhost:3000",
 
-"https://ai-assessment-creator-steel.vercel.app/"
+process.env.CLIENT_URL || ""
 
 ],
 
-credentials:true
+credentials: true
 
 })
 
