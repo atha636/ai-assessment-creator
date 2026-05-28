@@ -35,16 +35,16 @@ http.createServer(app);
 
 initSocket(server);
 
+const PORT =
+process.env.PORT || 5000;
+
 server.listen(
-
-5000,
-
+PORT,
 ()=>{
 
 console.log(
-"Server Running"
+`Server Running on ${PORT}`
 );
 
 }
-
 );
