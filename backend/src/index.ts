@@ -19,7 +19,23 @@ import "./jobs/worker";
 
 const app=express();
 
-app.use(cors());
+app.use(
+
+cors({
+
+origin:[
+
+"http://localhost:3000",
+
+"https://ai-assessment-creator-steel.vercel.app/"
+
+],
+
+credentials:true
+
+})
+
+);
 
 app.use(express.json());
 
