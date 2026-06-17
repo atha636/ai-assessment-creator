@@ -163,3 +163,4 @@ Open http://localhost:3000
 4. Worker picks up the job, calls Groq LLaMA with a structured prompt, parses JSON
 5. Worker saves result to MongoDB (`status: completed`) and emits `generation-complete` via Socket.io
 6. Frontend receives the event (or detects completion via poll) and renders the paper
+This is uncomplete i will be working on this repo 
