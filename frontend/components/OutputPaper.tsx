@@ -216,13 +216,24 @@ export default function OutputPaper() {
   const [pollCount,    setPollCount]    = useState(0);
   const [failed,       setFailed]       = useState(false);
 
+  const [notFound, setNotFound] = useState(false);
+
   const assignmentIdRef = useRef<string | null>(null);
   const pollTimerRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollsRef        = useRef(0);
+
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
 
   /* ─── Fetch helper ─── */
   const fetchAssignment = useCallback(async (id: string) => {
     try {
       const res = await axios.get(`${API}/api/assignments/${id}`);
+      if (assignmentIdRef.current !== id) return; // stale response
       const data = res.data;
       if (data.status === "completed" && data.result) {
         setAssignment(data);
@@ -232,49 +243,49 @@ export default function OutputPaper() {
         stopPolling();
       } else {
         // still pending / processing — keep polling
-        setPollCount((c) => {
-          if (c + 1 >= MAX_POLLS) {
-            setFailed(true);
-            stopPolling();
-          }
-          return c + 1;
-        });
+        pollsRef.current += 1;
+        setPollCount(pollsRef.current);
+        if (pollsRef.current >= MAX_POLLS) {
+          setFailed(true);
+          stopPolling();
+        }
       }
-    } catch {
-      // network error — keep trying silently
+    } catch (err) {
+      if (axios.isAxiosError(err) && err.response?.status === 404) {
+        setNotFound(true);
+        stopPolling();
+      }
+      // other network errors — keep trying silently
     }
-  }, []); // eslint-disable-line
+  }, [stopPolling]);
 
-  const stopPolling = () => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-  };
+  const startPolling = useCallback((id: string) => {
+    stopPolling();
+    pollsRef.current = 0;
+    setPollCount(0);
+    fetchAssignment(id);
+    pollTimerRef.current = setInterval(() => fetchAssignment(id), POLL_INTERVAL);
+  }, [fetchAssignment, stopPolling]);
 
   /* ─── Boot ─── */
   useEffect(() => {
     const id = localStorage.getItem("assignmentId");
-    if (!id) return;
+    if (!id) {
+      router.replace("/create");
+      return;
+    }
     assignmentIdRef.current = id;
 
-    // 1) Immediate fetch — handles the case where generation already completed
-    fetchAssignment(id);
+    // Polling fallback (also does the immediate first fetch)
+    const kickoff = setTimeout(() => startPolling(id), 0);
 
-    // 2) Polling fallback — runs every 3s until done
-    pollTimerRef.current = setInterval(() => {
-      fetchAssignment(id);
-    }, POLL_INTERVAL);
-
-    // 3) WebSocket — instant update if connection is live
-    const onComplete = (data: any) => {
-      if (data.id === id || data.id === id.toString()) {
-        setAssignment((prev: any) => ({ ...prev, result: data.result, status: "completed" }));
-        stopPolling();
-      }
+    // WebSocket — instant update if connection is live. Compare against the ref so
+    // this keeps working after a regenerate.
+    const onComplete = (data: { id: string }) => {
+      if (data.id === assignmentIdRef.current) fetchAssignment(data.id);
     };
-    const onFailed = (data: any) => {
-      if (data.id === id || data.id === id.toString()) {
+    const onFailed = (data: { id: string }) => {
+      if (data.id === assignmentIdRef.current) {
         setFailed(true);
         stopPolling();
       }
@@ -284,11 +295,12 @@ export default function OutputPaper() {
     socket.on("generation-failed", onFailed);
 
     return () => {
+      clearTimeout(kickoff);
       stopPolling();
       socket.off("generation-complete", onComplete);
       socket.off("generation-failed", onFailed);
     };
-  }, [fetchAssignment]);
+  }, [router, startPolling, fetchAssignment, stopPolling]);
 
   /* ─── Download PDF ─── */
   const downloadPDF = async () => {
@@ -326,36 +338,45 @@ export default function OutputPaper() {
 
   /* ─── Regenerate ─── */
   const regenerate = async () => {
+    const id = assignmentIdRef.current;
+    if (!id) return;
     setRegenerating(true);
     setFailed(false);
     try {
-      const saved = localStorage.getItem("lastForm");
-      if (!saved) return;
-      const form = JSON.parse(saved);
-      const fd = new FormData();
-      Object.entries(form).forEach(([k, v]) =>
-        fd.append(k, typeof v === "object" ? JSON.stringify(v) : String(v))
-      );
-      const res = await axios.post(`${API}/api/assignments`, fd);
-      const newId = res.data.assignment._id;
-      localStorage.setItem("assignmentId", newId);
-      assignmentIdRef.current = newId;
-
-      // Reset state and start polling again
+      // Re-queue the SAME assignment (keeps its uploaded content & settings)
+      await axios.post(`${API}/api/assignments/${id}/regenerate`);
       setAssignment(null);
-      setPollCount(0);
-
-      pollTimerRef.current = setInterval(() => {
-        fetchAssignment(newId);
-      }, POLL_INTERVAL);
+      startPolling(id);
     } catch (err) {
       console.error(err);
+      setFailed(true);
     } finally {
       setRegenerating(false);
     }
   };
 
   /* ─── Render ─── */
+  if (notFound) {
+    return (
+      <div style={{ textAlign: "center", padding: "80px 20px", fontFamily: "var(--font-body)" }}>
+        <h2 style={{ fontWeight: 700, fontSize: 20, color: "var(--text-primary)", marginBottom: 8 }}>
+          Assignment not found
+        </h2>
+        <p style={{ color: "var(--text-muted)", fontSize: 14, marginBottom: 20 }}>
+          It may have been deleted.
+        </p>
+        <button
+          onClick={() => router.push("/assignments")}
+          style={{
+            background: "var(--text-primary)", color: "white", border: "none",
+            borderRadius: 12, padding: "12px 24px", fontSize: 14, fontWeight: 600, cursor: "pointer",
+          }}
+        >
+          Back to assignments
+        </button>
+      </div>
+    );
+  }
   if (failed) return <FailedState onRetry={regenerate} />;
   if (!assignment?.result) return <LoadingState pollCount={pollCount} />;
 

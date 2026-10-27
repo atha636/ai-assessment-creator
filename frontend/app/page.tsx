@@ -163,7 +163,7 @@ function QuickActionCard({
 
 export default function HomePage() {
   const router = useRouter();
-  const [stats, setStats] = useState({ total: 0, pending: 0, completed: 0 });
+  const [stats, setStats] = useState({ total: 0, pending: 0, completed: 0, thisWeek: 0 });
   const [recent, setRecent] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -175,6 +175,9 @@ export default function HomePage() {
           total: all.length,
           pending: all.filter((a: any) => a.status === "pending" || a.status === "processing").length,
           completed: all.filter((a: any) => a.status === "completed").length,
+          thisWeek: all.filter(
+            (a: any) => Date.now() - new Date(a.createdAt).getTime() < 7 * 24 * 60 * 60 * 1000
+          ).length,
         });
         setRecent(all.slice(0, 3));
       })
@@ -318,7 +321,7 @@ export default function HomePage() {
         <StatCard
           icon={TrendingUp}
           label="This Week"
-          value={loading ? "—" : recent.length}
+          value={loading ? "—" : stats.thisWeek}
           color="#6366F1"
           bg="#EEF2FF"
         />
@@ -534,11 +537,11 @@ export default function HomePage() {
                     padding: "3px 10px",
                     borderRadius: 99,
                     fontFamily: "var(--font-body)",
-                    background: a.status === "completed" ? "#F0FDF4" : "#FFFBEB",
-                    color: a.status === "completed" ? "#16A34A" : "#CA8A04",
+                    background: a.status === "completed" ? "#F0FDF4" : a.status === "failed" ? "#FEF2F2" : "#FFFBEB",
+                    color: a.status === "completed" ? "#16A34A" : a.status === "failed" ? "#DC2626" : "#CA8A04",
                     flexShrink: 0,
                   }}>
-                    {a.status === "completed" ? "Done" : "Processing"}
+                    {a.status === "completed" ? "Done" : a.status === "failed" ? "Failed" : "Processing"}
                   </span>
                 </div>
               ))}

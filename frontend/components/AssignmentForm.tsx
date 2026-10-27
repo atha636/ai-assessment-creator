@@ -458,6 +458,19 @@ export default function AssignmentForm() {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState("");
 
+  const handleFile = (f: File) => {
+    if (!["application/pdf", "image/png", "image/jpeg"].includes(f.type)) {
+      setError("Only PDF, PNG or JPG files are allowed.");
+      return;
+    }
+    if (f.size > 10 * 1024 * 1024) {
+      setError("File must be under 10MB.");
+      return;
+    }
+    setError("");
+    setFile(f);
+  };
+
   const totalQuestions = formData.questionTypes.reduce((s, q) => s + q.numQuestions, 0);
   const totalMarks = formData.questionTypes.reduce((s, q) => s + q.numQuestions * q.marks, 0);
 
@@ -466,6 +479,12 @@ export default function AssignmentForm() {
     setError("");
 
     if (!formData.dueDate) { setError("Please select a due date."); return; }
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (new Date(`${formData.dueDate}T00:00:00`) < today) {
+      setError("Due date cannot be in the past.");
+      return;
+    }
     if (formData.questionTypes.length === 0) { setError("Add at least one question type."); return; }
     for (const qt of formData.questionTypes) {
       if (qt.numQuestions <= 0) { setError("Number of questions must be positive."); return; }
@@ -482,14 +501,6 @@ export default function AssignmentForm() {
       fd.append("instructions", formData.instructions);
       if (file) fd.append("file", file);
 
-      localStorage.setItem("lastForm", JSON.stringify({
-        dueDate: formData.dueDate,
-        questionTypes: formData.questionTypes,
-        totalQuestions,
-        marks: totalMarks,
-        instructions: formData.instructions,
-      }));
-
       const res = await axios.post(
         `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"}/api/assignments`,
         fd
@@ -498,7 +509,10 @@ export default function AssignmentForm() {
       localStorage.setItem("assignmentId", res.data.assignment._id);
       router.push("/output");
     } catch (err: any) {
-      setError(err?.response?.data?.message || "Something went wrong.");
+      setError(
+        err?.response?.data?.message ||
+          (err?.code === "ERR_NETWORK" ? "Cannot reach the server. Is the backend running?" : "Something went wrong.")
+      );
     } finally {
       setLoading(false);
     }
@@ -617,7 +631,7 @@ export default function AssignmentForm() {
             {/* File upload */}
             <div style={{ marginBottom: 20 }}>
               <label style={labelStyle}>Upload File <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(optional)</span></label>
-              <FileDropzone file={file} onFile={setFile} onClear={() => setFile(null)} />
+              <FileDropzone file={file} onFile={handleFile} onClear={() => setFile(null)} />
             </div>
 
             {/* Due Date */}
