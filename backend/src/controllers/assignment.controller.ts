@@ -1,81 +1,128 @@
 import { Request, Response } from "express";
+import mongoose from "mongoose";
 import Assignment from "../models/Assignment";
 import { generationQueue } from "../jobs/queue";
 import { parseFile } from "../services/parser.service";
 
+interface QuestionTypeInput {
+  id?: string;
+  type: string;
+  numQuestions: number;
+  marks: number;
+}
+
+const parseQuestionTypes = (raw: unknown): QuestionTypeInput[] => {
+  let value: unknown = raw;
+  if (typeof raw === "string") {
+    try {
+      value = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map((q: any) => ({
+      id: q?.id ? String(q.id) : undefined,
+      type: String(q?.type ?? "").trim(),
+      numQuestions: Math.floor(Number(q?.numQuestions)),
+      marks: Math.floor(Number(q?.marks)),
+    }))
+    .filter(
+      (q) =>
+        q.type &&
+        q.numQuestions >= 1 && q.numQuestions <= 50 &&
+        q.marks >= 1 && q.marks <= 100
+    );
+};
+
+const badId = (res: Response) =>
+  res.status(400).json({ success: false, message: "Invalid assignment id" });
+
 export const createAssignment = async (req: Request, res: Response) => {
   try {
-    console.log("BODY:", req.body);
+    const questionTypes = parseQuestionTypes(req.body.questionTypes);
+    if (questionTypes.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Add at least one valid question type (1-50 questions, 1-100 marks each).",
+      });
+    }
 
-    let questionTypes = [];
-    try {
-      const raw = req.body.questionTypes;
-      if (typeof raw === "string") {
-        questionTypes = JSON.parse(raw);
-      } else if (Array.isArray(raw)) {
-        questionTypes = raw;
+    let dueDate: Date | null = null;
+    if (req.body.dueDate) {
+      dueDate = new Date(req.body.dueDate);
+      if (isNaN(dueDate.getTime())) {
+        return res.status(400).json({ success: false, message: "Invalid due date" });
       }
-    } catch {
-      questionTypes = [];
     }
 
     let sourceContent = "";
-    if ((req as any).file) {
-      try {
-        sourceContent = await parseFile((req as any).file);
-      } catch (e) {
-        console.warn("File parse skipped:", e);
-      }
+    if (req.file) {
+      sourceContent = await parseFile(req.file);
     }
 
     const assignment = await Assignment.create({
-      dueDate: req.body.dueDate || null,
+      dueDate,
       questionTypes,
-      totalQuestions: Number(req.body.totalQuestions) || 0,
-      marks: Number(req.body.marks) || 0,
-      instructions: req.body.instructions || "",
+      totalQuestions: questionTypes.reduce((s, q) => s + q.numQuestions, 0),
+      marks: questionTypes.reduce((s, q) => s + q.numQuestions * q.marks, 0),
+      instructions: String(req.body.instructions || "").slice(0, 2000),
       sourceContent,
       status: "pending",
     });
 
-    console.log("✅ Assignment created:", assignment._id);
-    await generationQueue.add("generate", { id: assignment._id });
-    console.log("✅ Job queued for:", assignment._id);
+    await generationQueue.add("generate", { id: String(assignment._id) });
+    console.log("✅ Assignment created & queued:", assignment._id);
 
     res.status(201).json({ success: true, assignment });
   } catch (err) {
     console.error("❌ CREATE ERROR:", err);
-    res.status(500).json({ success: false, error: String(err) });
+    res.status(500).json({ success: false, message: "Could not create assignment" });
   }
 };
 
 export const getAssignment = async (req: Request, res: Response) => {
   try {
+    if (!mongoose.isValidObjectId(req.params.id)) return badId(res);
+
     const assignment = await Assignment.findById(req.params.id);
     if (!assignment) {
       return res.status(404).json({ success: false, message: "Not found" });
     }
     res.json(assignment);
   } catch (err) {
-    res.status(500).json({ success: false, error: String(err) });
+    console.error("❌ GET ERROR:", err);
+    res.status(500).json({ success: false, message: "Could not load assignment" });
   }
 };
 
-export const getAllAssignments = async (req: Request, res: Response) => {
+export const getAllAssignments = async (_req: Request, res: Response) => {
   try {
-    const assignments = await Assignment.find().sort({ createdAt: -1 });
+    // sourceContent can be large and the list view never needs it
+    const assignments = await Assignment.find()
+      .select("-sourceContent")
+      .sort({ createdAt: -1 });
     res.json({ success: true, assignments });
   } catch (err) {
-    res.status(500).json({ success: false, error: String(err) });
+    console.error("❌ LIST ERROR:", err);
+    res.status(500).json({ success: false, message: "Could not load assignments" });
   }
 };
 
 export const deleteAssignment = async (req: Request, res: Response) => {
   try {
-    await Assignment.findByIdAndDelete(req.params.id);
+    if (!mongoose.isValidObjectId(req.params.id)) return badId(res);
+
+    const deleted = await Assignment.findByIdAndDelete(req.params.id);
+    if (!deleted) {
+      return res.status(404).json({ success: false, message: "Not found" });
+    }
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, error: String(err) });
+    console.error("❌ DELETE ERROR:", err);
+    res.status(500).json({ success: false, message: "Could not delete assignment" });
   }
 };
 
@@ -85,23 +132,22 @@ export const deleteAssignment = async (req: Request, res: Response) => {
  */
 export const regenerateAssignment = async (req: Request, res: Response) => {
   try {
-    const assignment = await Assignment.findById(req.params.id);
+    if (!mongoose.isValidObjectId(req.params.id)) return badId(res);
+
+    const assignment = await Assignment.findByIdAndUpdate(req.params.id, {
+      status: "pending",
+      result: null,
+    });
     if (!assignment) {
       return res.status(404).json({ success: false, message: "Not found" });
     }
 
-    // Reset to pending and wipe old result
-    await Assignment.findByIdAndUpdate(req.params.id, {
-      status: "pending",
-      result: null,
-    });
-
-    await generationQueue.add("generate", { id: assignment._id });
+    await generationQueue.add("generate", { id: String(assignment._id) });
 
     console.log("✅ Regeneration queued for:", assignment._id);
     res.json({ success: true, message: "Regeneration started" });
   } catch (err) {
     console.error("❌ REGENERATE ERROR:", err);
-    res.status(500).json({ success: false, error: String(err) });
+    res.status(500).json({ success: false, message: "Could not regenerate" });
   }
 };

@@ -81,43 +81,52 @@ Total questions: ${questionTypesArr.reduce((s, q) => s + q.numQuestions, 0)}
 Total marks: ${questionTypesArr.reduce((s, q) => s + q.numQuestions * q.marks, 0)}
 `;
 
-  try {
-    const response = await client.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.6,
-      max_tokens: 6000,
-    });
+  const response = await client.chat.completions.create({
+    model: "llama-3.3-70b-versatile",
+    messages: [{ role: "user", content: prompt }],
+    temperature: 0.6,
+    max_tokens: 8000,
+    response_format: { type: "json_object" },
+  });
 
-    const raw = response.choices[0]?.message?.content ?? "";
-    console.log("RAW AI:", raw.slice(0, 200));
+  const raw = response.choices[0]?.message?.content ?? "";
+  console.log("RAW AI:", raw.slice(0, 200));
 
-    const cleaned = raw
-      .replace(/```json\s*/gi, "")
-      .replace(/```\s*/g, "")
-      .trim();
+  const cleaned = raw
+    .replace(/```json\s*/gi, "")
+    .replace(/```\s*/g, "")
+    .trim();
 
-    // Find the JSON object
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    const jsonStr = cleaned.slice(start, end + 1);
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start === -1 || end === -1) {
+    throw new Error("AI did not return JSON");
+  }
 
-    return JSON.parse(jsonStr);
-  } catch (err) {
-    console.error("AI SERVICE ERROR:", err);
-    // Fallback structure with placeholder answers
+  const parsed = JSON.parse(cleaned.slice(start, end + 1));
+
+  if (!Array.isArray(parsed.sections) || parsed.sections.length === 0) {
+    throw new Error("AI response has no sections");
+  }
+
+  // Normalise so the UI never has to deal with missing fields
+  parsed.sections = parsed.sections.map((sec: any, i: number) => {
+    if (!Array.isArray(sec.questions) || sec.questions.length === 0) {
+      throw new Error(`AI response: section ${i + 1} has no questions`);
+    }
+    const spec = sections[i];
     return {
-      sections: sections.map((s) => ({
-        title: s.sectionLabel,
-        instruction: `Attempt all questions. Each question carries ${s.marksEach} marks.`,
-        questions: Array.from({ length: s.count }, (_, i) => ({
-          text: `Question ${i + 1}: [AI generation failed — please regenerate]`,
-          difficulty: i % 3 === 0 ? "Easy" : i % 3 === 1 ? "Medium" : "Hard",
-          marks: s.marksEach,
-          type: s.type,
-          answer: "Answer not available — please regenerate.",
-        })),
+      ...sec,
+      title: sec.title || spec?.sectionLabel || `Section ${String.fromCharCode(65 + i)}`,
+      questions: sec.questions.map((q: any) => ({
+        ...q,
+        text: String(q.text ?? ""),
+        marks: Number(q.marks) || spec?.marksEach || 1,
+        type: q.type || spec?.type,
+        difficulty: ["Easy", "Medium", "Hard"].includes(q.difficulty) ? q.difficulty : "Medium",
       })),
     };
-  }
+  });
+
+  return parsed;
 };
