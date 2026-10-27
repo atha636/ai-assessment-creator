@@ -1,18 +1,10 @@
 import mongoose from "mongoose";
 
-export const connectDB = async()=>{
+export const connectDB = async () => {
+  if (!process.env.MONGO_URI) {
+    throw new Error("MONGO_URI is not set");
+  }
 
-console.log(
-"MONGO:",
-process.env.MONGO_URI
-);
-
-await mongoose.connect(
-process.env.MONGO_URI!
-);
-
-console.log(
-"Mongo Connected"
-);
-
-}
+  await mongoose.connect(process.env.MONGO_URI);
+  console.log("Mongo Connected");
+};
